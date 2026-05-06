@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+<title>Flappy Crash</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Russo+One&family=JetBrains+Mono:wght@400;700&display=swap');
+
+:root {
+  --green:   #00e676;
+  --red:     #ff1744;
+  --gold:    #ffab00;
+  --blue:    #00b0ff;
+  --cyan:    #00e5ff;
+  --bg:      #03070f;
+  --panel:   #07111f;
+  --panel2:  #0b1a2e;
+  --border:  rgba(0,230,118,0.28);
+  --text:    #cce8ff;
+  --dim:     #3a6080;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 8px 16px;
+  overflow-x: hidden;
+}
+
+/* Scanlines */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0, transparent 2px,
+    rgba(0,0,0,0.06) 2px, rgba(0,0,0,0.06) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+.title {
+  font-family: 'Russo One', sans-serif;
+  font-size: clamp(1.3rem, 5vw, 2rem);
+  letter-spacing: 0.18em;
+  background: linear-gradient(100deg, var(--green), var(--cyan), var(--green));
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shine 4s linear infinite;
+  margin-bottom: 8px;
+  text-align: center;
+}
+@keyframes shine { to { background-position: 200% center; } }
+
+.wrap {
+  width: 100%;
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#gameCanvas {
+  display: block;
+  width: 100%;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  touch-action: none;
+  box-shadow: 0 0 30px rgba(0,230,118,0.12), 0 4px 40px rgba(0,0,0,0.7);
+}
+
+/* ── HUD ── */
+.hud {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.hbox {
+  background: var(--panel);
+  border: 1px solid rgba(0,176,255,0.18);
+  border-radius: 8px;
+  padding: 7px 8px;
+  text-align: center;
+}
+.hbox-label {
+  font-size: 0.55rem;
+  color: var(--dim);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+.hbox-val {
+  font-family: 'Russo One', sans-serif;
+  font-size: 1.05rem;
+  color: var(--green);
+  transition: color 0.25s;
+  line-height: 1;
+}
+.hbox-val.danger { color: var(--red); }
+.hbox-val.gold   { color: var(--gold); }
+
+/* ── Balance ── */
+.bal-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid rgba(255,171,0,0.2);
+  border-radius: 8px;
+  padding: 7px 14px;
+}
+.bal-label { font-size: 0.58rem; color: var(--dim); letter-spacing: 0.15em; text-transform: uppercase; }
+#balDisplay { font-family: 'Russo One', sans-serif; font-size: 1rem; color: var(--gold); }
+
+/* ── Controls ── */
+.controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+}
+.cgrp { display: flex; flex-direction: column; gap: 4px; }
+.clabel { font-size: 0.55rem; color: var(--dim); letter-spacing: 0.12em; text-transform: uppercase; }
+
+input[type="number"], select {
+  background: var(--panel2);
+  border: 1px solid rgba(0,176,255,0.22);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.83rem;
+  padding: 7px 8px;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  -webkit-appearance: none;
+}
+input[type="number"]:focus, select:focus {
+  border-color: var(--green);
+  box-shadow: 0 0 8px rgba(0,230,118,0.2);
+}
+select option { background: #07111f; }
+
+/* ── Buttons ── */
+.btnrow { display: flex; gap: 8px; }
+
+button {
+  flex: 1;
+  font-family: 'Russo One', sans-serif;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  padding: 11px 6px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.12s, box-shadow 0.15s, opacity 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+button:active { transform: scale(0.96); }
+button:disabled { opacity: 0.38; cursor: not-allowed; transform: none; }
+
+#btnStart {
+  background: linear-gradient(135deg, #00c060, #00e676);
+  color: #021a0a;
+  box-shadow: 0 0 18px rgba(0,230,118,0.38);
+}
+#btnStart:not(:disabled):hover { box-shadow: 0 0 30px rgba(0,230,118,0.65); }
+
+#btnCashout {
+  background: linear-gradient(135deg, #ff8f00, #ffab00);
+  color: #1a0b00;
+  box-shadow: 0 0 18px rgba(255,171,0,0.38);
+  display: none;
+}
+#btnCashout:not(:disabled):hover { box-shadow: 0 0 30px rgba(255,171,0,0.65); }
+#btnCashout.pulse { animation: cpulse 0.7s ease-in-out infinite alternate; }
+@keyframes cpulse {
+  from { box-shadow: 0 0 12px rgba(255,171,0,0.4); }
+  to   { box-shadow: 0 0 36px rgba(255,171,0,0.95); }
+}
+
+.hint {
+  font-size: 0.6rem;
+  color: var(--dim);
+  text-align: center;
+  letter-spacing: 0.08em;
+  line-height: 1.7;
+}
+
+/* ── Toast ── */
+#toast {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%) translateY(90px);
+  background: var(--panel2);
+  border: 1px solid var(--green);
+  border-radius: 10px;
+  padding: 11px 22px;
+  font-family: 'Russo One', sans-serif;
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  color: var(--green);
+  box-shadow: 0 0 24px rgba(0,230,118,0.28);
+  transition: transform 0.38s cubic-bezier(0.34,1.56,0.64,1);
+  z-index: 1000;
+  pointer-events: none;
+  text-align: center;
+  max-width: 88vw;
+  white-space: nowrap;
+}
+#toast.show { transform: translateX(-50%) translateY(0); }
+#toast.loss { border-color: var(--red); color: var(--red); box-shadow: 0 0 24px rgba(255,23,68,0.28); }
+#toast.win  { border-color: var(--gold); color: var(--gold); box-shadow: 0 0 24px rgba(255,171,0,0.28); }
+
+/* Percent bar across top of canvas */
+.pbar-wrap {
+  width: 100%;
+  height: 6px;
+  background: var(--panel2);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: -4px;
+}
+#pbar {
+  height: 100%;
+  width: 0%;
+  background: var(--green);
+  transition: background 0.3s;
+  border-radius: 3px;
+}
+
+@media (max-width: 380px) {
+  .controls { grid-template-columns: 1fr 1fr; }
+  .cgrp:last-child { grid-column: span 2; }
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="title">⚡ FLAPPY CRASH</div>
+
+  <canvas id="gameCanvas"></canvas>
+
+  <div class="pbar-wrap"><div id="pbar"></div></div>
+
+  <div class="hud">
+    <div class="hbox">
+      <div class="hbox-label">Очки</div>
+      <div class="hbox-val" id="scoreDisp">0</div>
+    </div>
+    <div class="hbox">
+      <div class="hbox-label">Рост</div>
+      <div class="hbox-val" id="pctDisp">100%</div>
+    </div>
+    <div class="hbox">
+      <div class="hbox-label">Выигрыш</div>
+      <div class="hbox-val gold" id="winDisp">—</div>
+    </div>
+  </div>
+
+  <div class="bal-row">
+    <span class="bal-label">Баланс</span>
+    <span id="balDisplay">1 000.00</span>
+  </div>
+
+  <div class="controls">
+    <div class="cgrp">
+      <div class="clabel">Ставка</div>
+      <input type="number" id="betInput" value="50" min="1" step="1"/>
+    </div>
+    <div class="cgrp">
+      <div class="clabel">Валюта</div>
+      <select id="currSel">
+        <option value="RUB">₽ RUB</option>
+        <option value="USD" selected>$ USD</option>
+        <option value="AMD">֏ AMD</option>
+      </select>
+    </div>
+    <div class="cgrp">
+      <div class="clabel">Скорость</div>
+      <select id="speedSel">
+        <option value="normal" selected>Обычная</option>
+        <option value="fast">Быстро</option>
+        <option value="insane">Безумие</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="btnrow">
+    <button id="btnStart">▶ СТАРТ</button>
+    <button id="btnCashout">💰 ЗАБРАТЬ</button>
+  </div>
+
+  <div class="hint">
+    НАЖМИ / ТАП / ПРОБЕЛ — прыжок &nbsp;|&nbsp; Проходи трубы, % растёт &nbsp;|&nbsp; Забери до краша!
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+// ── Canvas setup (HiDPI) ─────────────────────────────────────
+const canvas = document.getElementById('gameCanvas');
+const ctx    = canvas.getContext('2d');
+const CW = 520, CH = 300;
+let DPR = 1;
+
+function resizeCanvas() {
+  const cssW = Math.min(CW, window.innerWidth - 16);
+  const cssH = cssW * CH / CW;
+  canvas.style.width  = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width  = Math.round(CW * DPR);
+  canvas.height = Math.round(CH * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// ── Currency ─────────────────────────────────────────────────
+const CURRENCIES = {
+  USD: { sym: '$',  dec: 2 },
+  RUB: { sym: '₽', dec: 0 },
+  AMD: { sym: '֏', dec: 0 },
+};
+let currency = 'USD';
+
+function fmt(n) {
+  const c = CURRENCIES[currency];
+  return c.sym + Number(n).toFixed(c.dec).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+}
+
+// ── State ────────────────────────────────────────────────────
+const S = Object.freeze({ IDLE:0, PLAYING:1, DEAD:2, CASHOUT:3 });
+let state = S.IDLE;
+
+let balance  = 1000;
+let bet      = 50;
+let score    = 0;
+let lastTime = null;
+
+// ── Crash / Percent System ───────────────────────────────────
+// The "percentage" display is: crashPercent (starts 100%, grows)
+// Win = stake * crashPercent / 100
+// e.g. cashout at 150% → win = stake * 1.5
+//
+// Internally we track a smooth multiplier (1.0 → N)
+// but display it as percentage (100% → N×100%)
+//
+let multiplier     = 1.0;   // internal (1.0 = 100%)
+let crashTarget    = 1.0;   // secret crash multiplier
+let elapsed        = 0;     // seconds since round start
+const GROWTH_K     = 0.15;  // exponential rate: mult = e^(K*t)
+const GRACE_S      = 2.5;   // guaranteed grace period
+const MAX_MULT     = 40.0;
+
+function generateCrashTarget() {
+  const r = Math.random();
+  if (r < 0.015) return 1.0 + GROWTH_K; // ~1.5% early crash after grace
+  const edge = 0.97;
+  return Math.min(1 / (1 - r * edge), MAX_MULT);
+}
+
+function pctStr(m) {
+  // Display as integer percent: 1.0→100%, 1.5→150%, 2.0→200%
+  return Math.floor(m * 100) + '%';
+}
+
+// ── Bird ─────────────────────────────────────────────────────
+const BIRD = {
+  x:0, y:0, vy:0, w:34, h:26,
+  gravity:1750, jumpVel:-500,
+  rotation:0, flapFrame:0, flapTimer:0,
+};
+function resetBird() {
+  BIRD.x = 80; BIRD.y = CH/2;
+  BIRD.vy=0; BIRD.rotation=0; BIRD.flapFrame=0; BIRD.flapTimer=0;
+}
+
+let jumpPending = false;
+function birdJump() {
+  if (state !== S.PLAYING || jumpPending) return;
+  BIRD.vy = BIRD.jumpVel;
+  jumpPending = true;
+  setTimeout(()=>{ jumpPending=false; }, 20);
+  soundFlap();
+}
+
+// ── Pipes ────────────────────────────────────────────────────
+const PIPE_W = 52;
+const GAP_H  = 118;
+const PIPE_MS = 1900;
+let pipes=[], pipeTimer=0, gameSpeed=200;
+
+function getSpeed() {
+  const v = document.getElementById('speedSel').value;
+  return v==='fast'?270 : v==='insane'?360 : 200;
+}
+
+function spawnPipe() {
+  const minTop = 46, maxTop = CH - 18 - GAP_H - 46;
+  const gapTop = minTop + Math.random()*(maxTop-minTop);
+  pipes.push({ x:CW+10, gapTop, gapBot:gapTop+GAP_H,
+    passed:false, collapsing:false, collapseP:0, alpha:1 });
+}
+
+// ── Particles ────────────────────────────────────────────────
+const MAX_PT = 120;
+let particles = [];
+
+function spawnPt(x, y, color, n) {
+  const avail = MAX_PT - particles.length;
+  const cnt = Math.min(n, avail);
+  for (let i=0; i<cnt; i++) {
+    const a = Math.random()*Math.PI*2;
+    const s = 60 + Math.random()*180;
+    particles.push({
+      x, y,
+      vx: Math.cos(a)*s, vy: Math.sin(a)*s,
+      life:1, decay:0.7+Math.random()*0.7,
+      r:2+Math.random()*4, color
+    });
+  }
+}
+
+// ── Stars ────────────────────────────────────────────────────
+const STARS = Array.from({length:55}, ()=>({
+  x: Math.random()*CW, y: Math.random()*CH,
+  r: 0.5+Math.random()*1.5,
+  phase: Math.random()*Math.PI*2,
+  spd: 0.3+Math.random()*0.6,
+}));
+let floorOff = 0;
+
+// ── Audio ────────────────────────────────────────────────────
+let actx = null;
+
+function ensureAudio() {
+  if (!actx) {
+    try { actx = new (window.AudioContext||window.webkitAudioContext)(); } catch(e){}
+  }
+  if (actx && actx.state==='suspended') actx.resume().catch(()=>{});
+}
+
+function tone(freq, dur, type='sine', gain=0.07) {
+  if (!actx || actx.state!=='running') return;
+  try {
+    const osc=actx.createOscillator(), g=actx.createGain();
+    osc.connect(g); g.connect(actx.destination);
+    osc.type=type; osc.frequency.value=freq;
+    g.gain.setValueAtTime(gain, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime+dur);
+    osc.start(); osc.stop(actx.currentTime+dur);
+    osc.onended=()=>{ osc.disconnect(); g.disconnect(); };
+  } catch(e){}
+}
+
+function soundFlap()    { tone(520,0.08,'sine',0.07); }
+function soundPass()    { tone(880,0.1,'sine',0.06); setTimeout(()=>tone(1100,0.14,'sine',0.04),60); }
+function soundDead()    { tone(180,0.4,'sawtooth',0.10); setTimeout(()=>tone(110,0.5,'sawtooth',0.08),100); }
+function soundCashout() { [660,880,1100].forEach((f,i)=>setTimeout(()=>tone(f,0.18,'sine',0.07),i*80)); }
+
+// ── Toast ────────────────────────────────────────────────────
+let toastT = null;
+function toast(msg, type='') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show' + (type?' '+type:'');
+  clearTimeout(toastT);
+  toastT = setTimeout(()=>{ el.className=''; }, 3000);
+}
+
+// ── UI refs ──────────────────────────────────────────────────
+const btnStart   = document.getElementById('btnStart');
+const btnCashout = document.getElementById('btnCashout');
+const pctEl      = document.getElementById('pctDisp');
+const winEl      = document.getElementById('winDisp');
+const scoreEl    = document.getElementById('scoreDisp');
+const balEl      = document.getElementById('balDisplay');
+const betInp     = document.getElementById('betInput');
+const currSel    = document.getElementById('currSel');
+const pbar       = document.getElementById('pbar');
+
+function updateBal() { balEl.textContent = fmt(balance); }
+
+function updateHUD() {
+  const pct = Math.floor(multiplier*100);
+  pctEl.textContent = pct + '%';
+  pctEl.className   = 'hbox-val' + (pct > 300 ? ' danger' : '');
+
+  if (state===S.PLAYING) {
+    const win = bet * multiplier;
+    winEl.textContent = fmt(win);
+  }
+  scoreEl.textContent = score;
+
+  // progress bar: shows how close to crash (we hide exact target)
+  // just show elapsed growth as color warning
+  const pbarPct = Math.min(100, (multiplier-1)/(MAX_MULT-1)*100);
+  pbar.style.width = pbarPct + '%';
+  pbar.style.background = pct < 150 ? '#00e676' : pct < 250 ? '#ffab00' : '#ff1744';
+}
+
+// ── Collision ────────────────────────────────────────────────
+function collide(p) {
+  const bL=BIRD.x-BIRD.w/2+5, bR=BIRD.x+BIRD.w/2-5;
+  const bT=BIRD.y-BIRD.h/2+4, bB=BIRD.y+BIRD.h/2-4;
+  const pL=p.x, pR=p.x+PIPE_W;
+  if (bR<=pL||bL>=pR) return false;
+  if (bT>=p.gapTop&&bB<=p.gapBot) return false;
+  return true;
+}
+
+// ── Init / Start / End ───────────────────────────────────────
+function initGame() {
+  pipes=[]; particles=[]; pipeTimer=0; floorOff=0;
+  multiplier=1.0; elapsed=0; score=0; jumpPending=false;
+  crashTarget = generateCrashTarget();
+  gameSpeed   = getSpeed();
+  resetBird();
+  spawnPipe();
+}
+
+function startGame() {
+  ensureAudio();
+  bet = parseFloat(betInp.value)||0;
+  if (bet<=0)       { toast('Введи ставку!','loss'); return; }
+  if (bet>balance)  { toast('Недостаточно средств!','loss'); return; }
+
+  balance -= bet;
+  updateBal();
+  initGame();
+  state = S.PLAYING;
+
+  btnStart.disabled        = true;
+  btnCashout.style.display = 'flex';
+  btnCashout.classList.add('pulse');
+  betInp.disabled          = true;
+}
+
+function cashOut() {
+  if (state!==S.PLAYING) return;
+  const win = bet * multiplier;
+  balance  += win;
+  state     = S.CASHOUT;
+  soundCashout();
+  updateBal();
+  toast('💰 Забрано! Выигрыш: ' + fmt(win), 'win');
+  endRound(true, win);
+}
+
+function killBird() {
+  if (state!==S.PLAYING) return;
+  state = S.DEAD;
+  soundDead();
+  spawnPt(BIRD.x, BIRD.y, '#ff1744', 22);
+  toast('💥 Краш! Потеряно: ' + fmt(bet), 'loss');
+  endRound(false, 0);
+}
+
+function endRound(won, winAmt) {
+  btnStart.disabled        = false;
+  btnCashout.style.display = 'none';
+  btnCashout.classList.remove('pulse');
+  betInp.disabled          = false;
+  winEl.textContent        = won ? fmt(winAmt) : '—';
+  winEl.className          = 'hbox-val gold';
+  pbar.style.width         = '0%';
+}
+
+// ── Update ───────────────────────────────────────────────────
+function update(dt) {
+  if (state!==S.PLAYING) return;
+
+  elapsed    += dt;
+  multiplier  = Math.min(Math.exp(GROWTH_K*elapsed), MAX_MULT);
+
+  // Crash check (after grace period)
+  if (elapsed > GRACE_S && multiplier >= crashTarget) {
+    killBird(); return;
+  }
+
+  // Bird physics
+  BIRD.vy += BIRD.gravity * dt;
+  BIRD.y  += BIRD.vy * dt;
+
+  BIRD.flapTimer += dt;
+  if (BIRD.flapTimer > 0.09) {
+    BIRD.flapTimer = 0;
+    BIRD.flapFrame = (BIRD.flapFrame+1)%3;
+  }
+
+  const tRot = Math.max(-30, Math.min(90, BIRD.vy*0.065));
+  BIRD.rotation += (tRot - BIRD.rotation)*12*dt;
+
+  // Floor/ceiling death
+  if (BIRD.y - BIRD.h/2 < 0 || BIRD.y + BIRD.h/2 > CH-18) {
+    killBird(); return;
+  }
+
+  // Pipe spawn
+  pipeTimer += dt*1000;
+  if (pipeTimer >= PIPE_MS) {
+    pipeTimer -= PIPE_MS;
+    spawnPipe();
+  }
+
+  // Pipe update
+  for (let i=pipes.length-1; i>=0; i--) {
+    const p=pipes[i];
+
+    if (p.collapsing) {
+      p.collapseP += dt*3.0;
+      p.alpha = Math.max(0, 1-p.collapseP);
+      if (p.collapseP>=1) { pipes.splice(i,1); continue; }
+    } else {
+      p.x -= gameSpeed * dt;
+    }
+
+    // Passed check
+    if (!p.passed && (p.x+PIPE_W) < BIRD.x) {
+      p.passed = true;
+      p.collapsing = true;
+      score++;
+      soundPass();
+      spawnPt(p.x+PIPE_W/2, p.gapTop+GAP_H/2, '#00e676', 12);
+    }
+
+    // Collision — only if not yet passed/collapsing
+    if (!p.passed && !p.collapsing && collide(p)) {
+      killBird(); return;
+    }
+
+    // Remove off-screen pipes that were never passed
+    if (!p.collapsing && p.x+PIPE_W < -80) {
+      pipes.splice(i,1);
+    }
+  }
+
+  floorOff = (floorOff + gameSpeed*dt) % 40;
+}
+
+function updatePt(dt) {
+  for (let i=particles.length-1; i>=0; i--) {
+    const p=particles[i];
+    p.x+=p.vx*dt; p.y+=p.vy*dt;
+    p.vy+=280*dt;
+    p.life-=p.decay*dt;
+    if (p.life<=0) particles.splice(i,1);
+  }
+}
+
+// ── Draw ─────────────────────────────────────────────────────
+function draw() {
+  const now = performance.now()/1000;
+
+  // Background
+  ctx.fillStyle='#050d18';
+  ctx.fillRect(0,0,CW,CH);
+
+  // Bird glow on bg
+  if (state===S.PLAYING||state===S.DEAD) {
+    const g=ctx.createRadialGradient(BIRD.x,BIRD.y,4,BIRD.x,BIRD.y,90);
+    g.addColorStop(0,'rgba(0,176,255,0.06)');
+    g.addColorStop(1,'transparent');
+    ctx.fillStyle=g; ctx.fillRect(0,0,CW,CH);
+  }
+
+  // Stars
+  const t=now;
+  ctx.beginPath();
+  for (const s of STARS) {
+    const a = 0.2 + 0.5*Math.sin(s.phase+t*s.spd);
+    ctx.fillStyle=`rgba(160,210,255,${a.toFixed(2)})`;
+    ctx.moveTo(s.x+s.r,s.y);
+    ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
+  }
+  ctx.fill();
+
+  // Pipes
+  for (const p of pipes) {
+    ctx.save(); ctx.globalAlpha=p.alpha;
+    drawPipe(p); ctx.restore();
+  }
+
+  // Particles
+  ctx.save();
+  for (let i=particles.length-1;i>=0;i--) {
+    const p=particles[i];
+    ctx.globalAlpha=p.life;
+    ctx.fillStyle=p.color;
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,p.r*p.life,0,Math.PI*2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // Floor
+  ctx.fillStyle='#0b1a2e';
+  ctx.fillRect(0,CH-18,CW,18);
+  ctx.strokeStyle='rgba(0,176,255,0.2)';
+  ctx.lineWidth=1;
+  ctx.beginPath();
+  for (let x=-floorOff;x<CW;x+=40) { ctx.moveTo(x,CH-18); ctx.lineTo(x+20,CH-18); }
+  ctx.stroke();
+  ctx.strokeStyle='rgba(0,230,118,0.45)';
+  ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(0,CH-18); ctx.lineTo(CW,CH-18); ctx.stroke();
+
+  // Bird
+  drawBird();
+
+  // Overlay
+  if (state===S.IDLE) {
+    overlay('FLAPPY CRASH', 'Установи ставку и нажми СТАРТ', '#00b0ff');
+  } else if (state===S.DEAD) {
+    const crashPct = Math.floor(multiplier*100)+'%';
+    overlay('КРАШ! ' + crashPct, 'Потеряно ' + fmt(bet) + ' — попробуй снова', '#ff1744');
+  } else if (state===S.CASHOUT) {
+    const win=bet*multiplier;
+    const pct=Math.floor(multiplier*100)+'%';
+    overlay('ЗАБРАНО! ' + pct, '+' + fmt(win) + ' — отличная игра!', '#ffab00');
+  }
+}
+
+function drawPipe(p) {
+  const sh  = p.collapseP*0.5;
+  const pw  = PIPE_W*(1-sh);
+  const cx  = p.x + PIPE_W/2;
+
+  // Top pipe
+  const topH = p.gapTop*(1-p.collapseP*0.6);
+  if (topH>0) {
+    const topGrad = ctx.createLinearGradient(cx-pw/2,0,cx+pw/2,0);
+    topGrad.addColorStop(0,'#14532d');
+    topGrad.addColorStop(0.5,'#1d6b3a');
+    topGrad.addColorStop(1,'#14532d');
+    ctx.fillStyle=topGrad;
+    ctx.fillRect(cx-pw/2, 0, pw, topH);
+    // highlight
+    ctx.fillStyle='rgba(255,255,255,0.07)';
+    ctx.fillRect(cx-pw/2+3, 0, 6, topH);
+    // cap
+    const capW=pw+12;
+    ctx.fillStyle='#1d6b3a';
+    ctx.fillRect(cx-capW/2, topH-20, capW, 20);
+    ctx.strokeStyle='rgba(0,230,118,0.5)';
+    ctx.lineWidth=1.5;
+    ctx.strokeRect(cx-capW/2, topH-20, capW, 20);
+  }
+
+  // Bottom pipe
+  const botY = p.gapBot + p.collapseP*(CH-18-p.gapBot)*0.8;
+  const botH = CH-18-botY;
+  if (botH>0) {
+    const botGrad = ctx.createLinearGradient(cx-pw/2,0,cx+pw/2,0);
+    botGrad.addColorStop(0,'#14532d');
+    botGrad.addColorStop(0.5,'#1d6b3a');
+    botGrad.addColorStop(1,'#14532d');
+    ctx.fillStyle=botGrad;
+    ctx.fillRect(cx-pw/2, botY, pw, botH);
+    ctx.fillStyle='rgba(255,255,255,0.07)';
+    ctx.fillRect(cx-pw/2+3, botY, 6, botH);
+    const capW=pw+12;
+    ctx.fillStyle='#1d6b3a';
+    ctx.fillRect(cx-capW/2, botY, capW, 20);
+    ctx.strokeStyle='rgba(0,230,118,0.5)';
+    ctx.lineWidth=1.5;
+    ctx.strokeRect(cx-capW/2, botY, capW, 20);
+  }
+}
+
+function drawBird() {
+  ctx.save();
+  ctx.translate(BIRD.x, BIRD.y);
+  ctx.rotate(BIRD.rotation*Math.PI/180);
+
+  // Aura
+  const aura=ctx.createRadialGradient(0,0,2,0,0,26);
+  aura.addColorStop(0,'rgba(0,200,255,0.28)');
+  aura.addColorStop(1,'transparent');
+  ctx.fillStyle=aura;
+  ctx.beginPath(); ctx.arc(0,0,26,0,Math.PI*2); ctx.fill();
+
+  // Body
+  ctx.fillStyle = state===S.DEAD ? '#cc8800' : '#facc15';
+  ctx.beginPath();
+  ctx.ellipse(0,0,BIRD.w/2,BIRD.h/2,0,0,Math.PI*2);
+  ctx.fill();
+
+  // Wing
+  const wOff=[-5,1,6][BIRD.flapFrame];
+  ctx.fillStyle = state===S.DEAD ? '#b07000' : '#e5a000';
+  ctx.beginPath();
+  ctx.ellipse(-5,wOff,10,6,-0.3,0,Math.PI*2);
+  ctx.fill();
+
+  // Eye
+  ctx.fillStyle='#fff';
+  ctx.beginPath(); ctx.arc(7,-4,5,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = state===S.DEAD ? '#000' : '#111827';
+  ctx.beginPath(); ctx.arc(8.5,-4,2.5,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#fff';
+  ctx.beginPath(); ctx.arc(9.2,-5,0.9,0,Math.PI*2); ctx.fill();
+
+  if (state===S.DEAD) {
+    ctx.strokeStyle='#ff1744'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(4,-8); ctx.lineTo(10,-2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(10,-8); ctx.lineTo(4,-2);  ctx.stroke();
+  }
+
+  // Beak
+  ctx.fillStyle='#f97316';
+  ctx.beginPath();
+  ctx.moveTo(13,-1); ctx.lineTo(21,1); ctx.lineTo(13,4);
+  ctx.closePath(); ctx.fill();
+
+  ctx.restore();
+}
+
+function overlay(title, sub, color) {
+  ctx.fillStyle='rgba(3,7,15,0.65)';
+  ctx.fillRect(0,0,CW,CH);
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+
+  ctx.font = 'bold 26px "Russo One", sans-serif';
+  ctx.fillStyle=color; ctx.shadowBlur=20; ctx.shadowColor=color;
+  ctx.fillText(title, CW/2, CH/2-16);
+  ctx.shadowBlur=0;
+
+  ctx.font = '11px "JetBrains Mono", monospace';
+  ctx.fillStyle='rgba(180,220,255,0.75)';
+  ctx.fillText(sub, CW/2, CH/2+16);
+
+  ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+}
+
+// ── Game Loop ────────────────────────────────────────────────
+function loop(ts) {
+  requestAnimationFrame(loop);
+  if (lastTime===null) { lastTime=ts; return; }
+  const dt = Math.min((ts-lastTime)/1000, 0.05);
+  lastTime = ts;
+  update(dt);
+  updatePt(dt);
+  draw();
+  updateHUD();
+}
+requestAnimationFrame(loop);
+
+// ── Input ────────────────────────────────────────────────────
+canvas.addEventListener('click', ()=>{ ensureAudio(); birdJump(); });
+canvas.addEventListener('touchstart', e=>{ e.preventDefault(); ensureAudio(); birdJump(); }, {passive:false});
+document.addEventListener('keydown', e=>{
+  if (e.code==='Space'||e.code==='ArrowUp') {
+    e.preventDefault(); ensureAudio(); birdJump();
+  }
+});
+
+btnStart.addEventListener('click', startGame);
+btnCashout.addEventListener('click', cashOut);
+currSel.addEventListener('change', e=>{
+  currency = e.target.value;
+  updateBal();
+  if (state!==S.PLAYING) winEl.textContent='—';
+});
+
+updateBal();
+</script>
+</body>
+</html>
